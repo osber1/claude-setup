@@ -2,7 +2,7 @@
 
 1. Move `./agents` and `./skills` in your `~/.claude` directory.
 2. Update `~/.claude/CLAUDE.md` with the contents from `./CLAUDE.md`.
-3. Update `~/.claude/settings.json` with the permissions from `./settings.local.json`.
+3. Update `~/.claude/settings.json` with the permissions from `./settings.json`.
 
 
 ## Setup LSP

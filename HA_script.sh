@@ -55,15 +55,23 @@ echo "==> Finding latest HAOS release"
 REPO=https://github.com/home-assistant/operating-system
 if command -v curl >/dev/null; then
   fetch()  { curl -fsSL "$1" </dev/null; }
-  latest() { curl -fsSLI -o /dev/null -w '%{url_effective}' "$REPO/releases/latest" </dev/null; }
   dl()     { curl -fL --progress-bar -o "$2" "$1" </dev/null; }
 else
   fetch()  { wget -qO- "$1" </dev/null; }
-  latest() { wget -S --spider "$REPO/releases/latest" 2>&1 </dev/null | awk '/^ *[Ll]ocation: /{u=$2} END{print u}'; }
   dl()     { wget -O "$2" "$1" </dev/null; }
 fi
-VER=$(latest | tr -d '\r' | sed -n 's#.*/releases/tag/##p' || true)
-[[ $VER =~ ^[0-9]+\.[0-9]+$ ]] || die "Could not determine latest version (got '$VER')"
+TAGS=$(fetch "$REPO/releases.atom" | grep -o '/releases/tag/[^"<]*' | sed 's#.*/tag/##' \
+       | grep -E '^[0-9]+\.[0-9]+$' | awk '!seen[$0]++' || true)
+[[ -n $TAGS ]] || die "Could not list HAOS releases (network?)"
+VER=""
+for t in $TAGS; do
+  page=$(fetch "$REPO/releases/expanded_assets/$t" || true)
+  if [[ $page == *"haos_generic-x86-64-$t.img.xz"* ]]; then
+    VER=$t; break
+  fi
+  echo "    $t has no generic-x86-64 image yet, skipping"
+done
+[[ -n $VER ]] || die "No release with a generic-x86-64 image found"
 IMG="haos_generic-x86-64-${VER}.img.xz"
 URL="$REPO/releases/download/${VER}/${IMG}"
 echo "    Version: $VER"

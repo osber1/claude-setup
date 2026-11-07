@@ -52,38 +52,39 @@ read -rp "Type WIPE to confirm: " confirm
 [[ $confirm == WIPE ]] || die "Aborted."
 
 echo "==> Finding latest HAOS release"
-API_URL=https://api.github.com/repos/home-assistant/operating-system/releases/latest
+REPO=https://github.com/home-assistant/operating-system
 if command -v curl >/dev/null; then
-  API_JSON=$(curl -fsSL "$API_URL" </dev/null) || die "Could not reach GitHub (network?)"
+  fetch()  { curl -fsSL "$1" </dev/null; }
+  latest() { curl -fsSLI -o /dev/null -w '%{url_effective}' "$REPO/releases/latest" </dev/null; }
+  dl()     { curl -fL --progress-bar -o "$2" "$1" </dev/null; }
 else
-  API_JSON=$(wget -qO- "$API_URL" </dev/null) || die "Could not reach GitHub (network?)"
+  fetch()  { wget -qO- "$1" </dev/null; }
+  latest() { wget -S --spider "$REPO/releases/latest" 2>&1 </dev/null | awk '/^ *[Ll]ocation: /{u=$2} END{print u}'; }
+  dl()     { wget -O "$2" "$1" </dev/null; }
 fi
-VER=$(grep -Po '"tag_name":\s*"\K[^"]+' <<<"$API_JSON" | head -n1)
-[[ -n $VER ]] || die "Could not parse latest version"
+VER=$(latest | tr -d '\r' | sed -n 's#.*/releases/tag/##p' || true)
+[[ $VER =~ ^[0-9]+\.[0-9]+$ ]] || die "Could not determine latest version (got '$VER')"
 IMG="haos_generic-x86-64-${VER}.img.xz"
+URL="$REPO/releases/download/${VER}/${IMG}"
 echo "    Version: $VER"
 
 SHA=""
 if command -v python3 >/dev/null; then
-  SHA=$(python3 -c '
+  SHA=$(fetch "https://api.github.com/repos/home-assistant/operating-system/releases/tags/${VER}" 2>/dev/null | python3 -c '
 import json,sys
-d=json.loads(sys.stdin.read())
+try: d=json.load(sys.stdin)
+except Exception: sys.exit()
 for a in d.get("assets",[]):
     if a["name"]==sys.argv[1]:
         print((a.get("digest") or "").removeprefix("sha256:")); break
-' "$IMG" <<<"$API_JSON" || true)
+' "$IMG" || true)
 fi
 
 WORKDIR=/tmp/haos
 mkdir -p "$WORKDIR"
-URL="https://github.com/home-assistant/operating-system/releases/download/${VER}/${IMG}"
 if [[ ! -f $WORKDIR/$IMG ]]; then
   echo "==> Downloading $URL"
-  if command -v curl >/dev/null; then
-    curl -fL --progress-bar -o "$WORKDIR/$IMG.part" "$URL" </dev/null || die "Download failed"
-  else
-    wget -O "$WORKDIR/$IMG.part" "$URL" </dev/null || die "Download failed"
-  fi
+  dl "$URL" "$WORKDIR/$IMG.part" || die "Download failed: $URL"
   mv "$WORKDIR/$IMG.part" "$WORKDIR/$IMG"
 fi
 
